@@ -848,11 +848,11 @@ namespace ezt {
 	} TimeUpdate_t;
 
 	typedef enum {
-		SquareWave32768Hz
-		SquareWave1024Hz
-		SquareWave32Hz
-		SquareWave1Hz
-	} SquareWave_t 
+		SquareWave32768Hz = 0,
+		SquareWave1024Hz = 1,
+		SquareWave32Hz = 2,
+		SquareWave1Hz = 3,
+	} SquareWave_t;
 
 	class BM8563 {
 
