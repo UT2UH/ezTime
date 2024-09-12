@@ -36,6 +36,9 @@
 // RV-3028-C7 RTC connected
 //#define EZTIME_RV3028_ENABLE
 
+// BM8563 RTC connected
+#define EZTIME_BM8563_ENABLE
+
 // Warranty void if edited below this point...
 
 
@@ -748,8 +751,8 @@ namespace ezt {
 			static uint8_t status(); //Returns the status byte
 			static void clearInterrupts();
 
-		// 	static bool setAgingOffset(int8_t val);
-		// 	static int8_t getAgingOffset();
+			static bool setAgingOffset(int8_t val);
+			static int8_t getAgingOffset();
 
 		private:
 			static uint8_t bcdToDec(uint8_t bcd);
@@ -793,7 +796,7 @@ namespace ezt {
 	#define BM8563_REG_TIMER2      (0x0F)
 
 	#define BM8563_VOLT_LOW_MASK   (0x80)
-	#define BM8563_MIN_MASK    (0x7F)
+	#define BM8563_MIN_MASK		   (0x7F)
 	#define BM8563_HOUR_MASK       (0x3F)
 	#define BM8563_WEEKDAY_MASK    (0x07)
 	#define BM8563_CENTURY_MASK    (0x80)
@@ -848,11 +851,11 @@ namespace ezt {
 	} TimeUpdate_t;
 
 	typedef enum {
-		SquareWave32768Hz
-		SquareWave1024Hz
-		SquareWave32Hz
-		SquareWave1Hz
-	} SquareWave_t 
+		SquareWave32768Hz = 0,
+		SquareWave1024Hz = 1,
+		SquareWave32Hz = 2,
+		SquareWave1Hz = 3,
+	} SquareWave_t;
 
 	class BM8563 {
 
@@ -862,7 +865,7 @@ namespace ezt {
 			
 			static bool setTime(time_t t, bool syncCalendar = true);
 			static bool setTime(const uint8_t hr, const uint8_t min, const uint8_t sec, const uint8_t day, const uint8_t month, const uint16_t yr, bool syncEpoch = true);
-			static bool setTime(tmElements_t &tm, bool syncEpoch = true);
+			static bool setTime(tmElements_t &tm);
 			static time_t now(bool getCalendar = false);
 			static time_t getSetTime(uint64_t &micros);	//Returns the time when RTC time was set
 
@@ -874,7 +877,7 @@ namespace ezt {
 			//DS3231 compatible alarm types
 			static void setAlarm2(Alarm2_t alarmType, uint8_t dayDate, const uint8_t hour, const uint8_t min, const bool enableClockOut = false);
 	
-			static void setTimer(uint16_t timerValue, uint16_t timerFrequency = 1, bool setInterrupt = true);
+			static void setTimer(uint8_t timerValue, uint8_t timerFrequency = 1, bool setInterrupt = true);
 			static void enableTimer();
 			static void disableTimer();
 			
@@ -907,5 +910,3 @@ namespace ezt {
 } // extern "C++"
 #endif // __cplusplus
 #endif //_EZTIME_H_
-
-

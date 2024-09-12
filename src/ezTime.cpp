@@ -1,5 +1,5 @@
 #include <Arduino.h>
-
+#include <sys/param.h>
 #include <ezTime.h>
 
 #ifdef EZTIME_NETWORK_ENABLE
@@ -2472,6 +2472,27 @@ DS3231 RTC;
 		rv3028(RV3028_REG_STATUS, 0);
 	}
 
+	//Set the EEOffset register
+	//The LSB bit (EEOffset[0]) is ignored
+	//Therefore, the saved offset is within +/-1 range
+	bool RV3028::setAgingOffset(int8_t val) {
+		int regVal = (int) val;
+		regVal = regVal <= 0 ? -regVal : (512 - regVal);
+		regVal >>= 1;
+		regVal = MIN(regVal, UINT8_MAX);  // not needed because it's guaranted to be within the range
+		return rv3028(RV3028_REG_EEOffset_8_1, (uint8_t) regVal);
+	}
+
+	int8_t RV3028::getAgingOffset() {
+		uint8_t regVal = rv3028(RV3028_REG_EEOffset_8_1);
+		int regFull = ((int) regVal) << 1;
+		if (regFull <= 128) {
+			return -((int8_t) regFull);
+		}
+		regFull = MIN(512 - regFull, INT8_MAX);
+		return (int8_t) regFull;
+	}
+
 	uint8_t RV3028::bcdToDec(uint8_t bcd) {
 		return (uint8_t)(10 * ((bcd & 0xF0) >> 4) + (bcd & 0x0F));
 	}
@@ -2600,11 +2621,11 @@ RV3028 RTC;
 		return (_i2cPort->endTransmission() ==  0);
 	}
 
-	// Read RTC VolageLow Flag and optionally clears it
+	// Read RTC VoltageLow Flag and optionally clears it
 	timeStatus_t BM8563::timeStatus(bool clearVL /* = false */) {
-		uint8_t vldReg = bm8563rd(BM8563_REG_SEC);
-		vldReg & BM8563_VOLT_LOW_MASK)? _rtc_status = timeNotSet : _rtc_status = timeSet;
-		if (clearМД){
+		uint8_t vldReg = bm8563(BM8563_REG_SEC);
+		(vldReg & BM8563_VOLT_LOW_MASK)? _rtc_status = timeNotSet : _rtc_status = timeSet;
+		if (clearVL){
 			vldReg &= ~(BM8563_VOLT_LOW_MASK);
 			bm8563(BM8563_REG_SEC, vldReg);
 		}
@@ -2618,7 +2639,8 @@ RV3028 RTC;
 	bool BM8563::setTime(time_t t, bool syncCalendar /* = true */) {
 		tmElements_t tm;
 		if (t < 946684800) {
-			t = 946684800; // 2000-01-01 00:00:00
+			t = 946684800;	// 2000-01-01 00:00:00
+			return false;	//
 		}
 		ezt::breakTime(t, tm);
 		return setTime(tm);
@@ -2632,14 +2654,6 @@ RV3028 RTC;
 		} else {
 			yr += 30; 
 		}
-		// if(yr <= 99) {
-		// 	// it is converted to years since 1970
-		// 	yr += 30; 
-		// } else if ((yr < 2000) || (yr > 2099)) {
-		// 	return false;
-		// } else {
-		// 	yr -= 1970;
-		// }
 		tm.Year = yr;
 		tm.Month = mnth;
 		tm.Day = day;
@@ -2658,29 +2672,28 @@ RV3028 RTC;
 	}
 
 	// Set the RTC time from a tmElements_t structure and clear the
-	// oscillator stop flag (OSF) in the Control/Status register
+	// voltage low flag in the Second register
 	bool BM8563::setTime(tmElements_t &tm) {
-		data[0] = (decToBcd(tm.Second)) & (~BM8563_VOL_LOW_MASK);
+		data[0] = (decToBcd(tm.Second)) & (~BM8563_VOLT_LOW_MASK);
 		data[1] = (decToBcd(tm.Minute));
 		data[2] = (decToBcd(tm.Hour));
 		data[3] = (decToBcd(tm.Day));
 		data[4] = tm.Wday - 1;
 		data[5] = (decToBcd(tm.Month));
-		data[6] = (decToBcd(tm.Year % 100));
-		if ((2000 % year) == 2000) {
-			data[5] &= (~BM8563_CENTURY_MASK);
+		data[6] = (decToBcd(tmYearToY2k(tm.Year)));
+		if (tm.Year < 30) {
+			data[5] &= (~BM8563_CENTURY_MASK);	// 0: 1900
 		} else {
-			data[5] |= BM8563_CENTURY_MASK;
+			data[5] |= BM8563_CENTURY_MASK;		// 1: 2000
 		}
 		// Get the nearest micros when tm.Second is writen to RTC
 		// Next second mark should be 500us later
 		_rtc_set_micros = micros();
 		// Write BCD encoded data to RTC registers
 		bm8563wr(BM8563_REG_SEC, 7, data);
-		enableOsc(true);
 		_rtc_set_time = ezt::makeTime(tm);
 		_rtc_status = timeSet;
-		// Clear oscillator halt flag
+		// Clear voltage low flag
 		return (timeStatus(true) == timeSet ? true : false);
 	}
 
@@ -2696,20 +2709,16 @@ RV3028 RTC;
 	time_t BM8563::now(bool getCalendar /* = false */) {
 		tmElements_t tm;
 		uint16_t year;
-		uint8_t cetury = 0;
+		uint8_t century = 0;
 		bm8563rd(BM8563_REG_SEC, 7, data);
-		_voltageLow = (data[0] & BM8563_VOL_LOW_MASK);
-		tm.Second = bcdToDec(data[0] & (~BM8563_VOL_LOW_MASK));
+		tm.Second = bcdToDec(data[0] & (~BM8563_VOLT_LOW_MASK));
 		tm.Minute = bcdToDec(data[1] & BM8563_MIN_MASK);
 		tm.Hour   = bcdToDec(data[2] & BM8563_HOUR_MASK);
 		tm.Day    = bcdToDec(data[3] & BM8563_DAY_MASK);
-		tm.Wday   = bcdToDec(data[4] & BM8563_WEEKDAY_MASK);
-		cetury    = data[5] & BM8563_CENTURY_MASK;
+		tm.Wday   = bcdToDec(data[4] & BM8563_WEEKDAY_MASK) + 1;
+		century   = data[5] & BM8563_CENTURY_MASK;
 		tm.Month  = bcdToDec(data[5] & BM8563_MONTH_MASK);
-		// tm.Year = _bcd_to_dec(data[6]);
-		// //cetury :  0 = 1900 , 1 = 2000
-		// tm.Year = cetury ?  1900 + tm.Year : 2000 + tm.Year;
-		tm.Year   = y2kYearToTm(bcdToDec(data[6])); // +30
+		tm.Year   = bcdToDec(data[6]) + 30;
 		if ((tm.Second > 59) || 
 			(tm.Minute > 59) || (tm.Hour > 23)  ||
 			(tm.Wday < 1)    || (tm.Wday > 7)   ||        
@@ -2780,7 +2789,7 @@ RV3028 RTC;
 				data[0] |= 1 << STATUS2_TI_TP;
 				bm8563wr(BM8563_REG_STAT2, 1, data);
 				data[0] = 1;
-				bm8563wr(BM8563_REG_TIMER2, 1, data)
+				bm8563wr(BM8563_REG_TIMER2, 1, data);
 				bm8563rd(BM8563_REG_TIMER1, 1, data);
 				data[0] |= 0x83;	//TE | 1/60Hz
 				bm8563wr(BM8563_REG_TIMER1, 1, data);
@@ -2794,7 +2803,7 @@ RV3028 RTC;
 				data[0] |= 1 << STATUS2_TI_TP;
 				bm8563wr(BM8563_REG_STAT2, 1, data);
 				data[0] = 1;
-				bm8563wr(BM8563_REG_TIMER2, 1, data)
+				bm8563wr(BM8563_REG_TIMER2, 1, data);
 				bm8563rd(BM8563_REG_TIMER1, 1, data);
 				data[0] |= 0x82;	//TE | 1Hz
 				bm8563wr(BM8563_REG_TIMER1, 1, data);
@@ -2831,7 +2840,7 @@ RV3028 RTC;
 		bm8563wr(BM8563_REG_ALRM_MIN, 4, data);
 	}
 
-	void BM8563::setTimer(uint8_t timerValue, uint8_t timerFrequency /* 1 */, bool setInterrupt /* true */, bool enableClockOut /* false */){
+	void BM8563::setTimer(uint8_t timerValue, uint8_t timerFrequency /* 1 */, bool setInterrupt /* true */){
 		// disableTimer();
 		// disableInterrupt(Timer);
 		// clearInterruptFlag(Timer);
@@ -2863,20 +2872,20 @@ RV3028 RTC;
 		bm8563(BM8563_REG_STAT2);
 		data[0] &= ~BM8563_TIMER_TF;
 		data[0] |= BM8563_ALARM_AF;
-		bm8563(BM8563_REG_STAT2, data);
+		bm8563(BM8563_REG_STAT2, data[0]);
 	}
 
 	void BM8563::setSquareWave(SquareWave_t squareWave, bool enableClockOut /* false */){
-		if ((uint8_t)squareWave > SquareWave1H) return false;
+		//if ((uint8_t)squareWave > SquareWave1Hz) return false;
 		data[0] = (uint8_t)squareWave;
 		if(enableClockOut)
-			m8563(BM8563_REG_SQW, data[0] | BM8563_CLK_ENABLE);
-		bm8563(BM8563_REG_SQW, data);
+			bm8563(BM8563_REG_SQW, data[0] | BM8563_CLK_ENABLE);
+		bm8563(BM8563_REG_SQW, data[0]);
 	}
 
 	void BM8563::enableClockOut(bool enable){
 		if(enable)
-			m8563(BM8563_REG_SQW, bm8563(BM8563_REG_SQW) | BM8563_CLK_ENABLE);
+			bm8563(BM8563_REG_SQW, bm8563(BM8563_REG_SQW) | BM8563_CLK_ENABLE);
 		else
 			bm8563(BM8563_REG_SQW, bm8563(BM8563_REG_SQW) & ~BM8563_CLK_ENABLE);
 	}
