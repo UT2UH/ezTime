@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include <sys/param.h>
 #include <ezTime.h>
+#include <stdlib.h>
+#include <time.h>
 
 #ifdef EZTIME_NETWORK_ENABLE
 	#ifdef EZTIME_CACHE_NVS
@@ -81,7 +83,7 @@ namespace {
 		uint16_t _ntp_interval = NTP_INTERVAL;
 		String _ntp_server = NTP_SERVER;
 	#endif
-	#if defined (EZTIME_DS3231_ENABLE) || defined (EZTIME_RV3028_ENABLE) || defined (EZTIME_BM8563_ENABLE)
+	#if defined defined (EZTIME_BM8563_ENABLE) || (EZTIME_DS3231_ENABLE) || defined (EZTIME_RV3028_ENABLE) || defined (EZTIME_RV3032_ENABLE)
 		#define HAS_RTC
 		TwoWire *_i2cPort;
 		timeStatus_t _rtc_status;
@@ -2612,6 +2614,7 @@ DS3231 RTC;
 RV3028 RTC;
 
 #elif defined (EZTIME_RV3032_ENABLE)  //K46v4
+#include <Wire.h>
 
 	#define RV3032_ADDRESS 0x51 // I2C address for RV3032
 	#define RV3032_CLOCKREG 0x01 // Clock register (that is where the seconds start)

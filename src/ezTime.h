@@ -779,6 +779,7 @@ namespace ezt {
 	extern RV3028 RTC;
 
 #elif defined  (EZTIME_RV3032_ENABLE) || defined (ARDUINO_FROG_ESP32)  || defined (ARDUINO_WESP32) || defined (ARDUINO_TTGO_T1)
+#include <Wire.h>
 
 	#define EZTIME_RV3032_ENABLE
 
